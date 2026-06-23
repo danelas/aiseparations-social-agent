@@ -1,0 +1,63 @@
+name: Daily blog post
+
+on:
+  schedule:
+    - cron: "0 13 * * *"   # 13:00 UTC daily (~8-9 AM ET)
+  workflow_dispatch:        # allow manual runs from the Actions tab
+    inputs:
+      dry_run:
+        description: "Dry run (draft only, do not publish)"
+        type: boolean
+        default: false
+
+concurrency:
+  group: blog
+  cancel-in-progress: false
+
+jobs:
+  post:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write       # commit state.json back to this repo
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - run: npm install
+
+      - name: Generate + publish the daily post
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          WEBSITE_REPO: ${{ secrets.WEBSITE_REPO }}
+          WEBSITE_BRANCH: ${{ secrets.WEBSITE_BRANCH }}
+          WEBSITE_REPO_TOKEN: ${{ secrets.WEBSITE_REPO_TOKEN }}
+          GIT_AUTHOR_NAME: ${{ secrets.GIT_AUTHOR_NAME }}
+          GIT_AUTHOR_EMAIL: ${{ secrets.GIT_AUTHOR_EMAIL }}
+        run: |
+          if [ "${{ inputs.dry_run }}" = "true" ]; then
+            npm run post:dry
+          else
+            npm run post
+          fi
+
+      - name: Save preview artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: blog-preview
+          path: preview/
+          if-no-files-found: ignore
+
+      - name: Commit state.json (records what was published)
+        if: ${{ inputs.dry_run != true }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add state.json || true
+          git commit -m "chore: update blog state [skip ci]" || echo "no state change"
+          git push || echo "nothing to push"
