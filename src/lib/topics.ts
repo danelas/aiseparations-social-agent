@@ -8,6 +8,7 @@ const QUOTE = "screen-print-quote-calculator";
 const PROFIT = "screen-print-profit-calculator";
 const DOCTOR = "print-readiness-check";
 const INKS = "separate-to-my-inks";
+const AISEP = "ai-color-separation-software";
 
 export const TOPICS: Topic[] = [
   // ---------- Separation fundamentals ----------
@@ -140,5 +141,39 @@ export const TOPICS: Topic[] = [
     keywords: ["mixing plastisol ink", "ink mixing recipe", "custom plastisol color"],
     linkedPages: [INKS],
     category: "ink",
+  },
+
+  // ---------- AI / answer-engine topics (own the "AI" query gap) ----------
+  {
+    id: "best-ai-color-separation-software",
+    title: "The Best AI Color Separation Software for Screen Printers",
+    intent: "Shop searching for an AI-powered separation tool and finding mostly non-AI options.",
+    keywords: ["best ai color separation software", "ai color separation software", "ai separation software"],
+    linkedPages: [AISEP],
+    category: "separation",
+  },
+  {
+    id: "is-there-ai-screen-printing-software",
+    title: "Is There AI Screen Printing Software? Yes — Here's What It Does",
+    intent: "Printer wondering whether real AI tools exist for screen printing prepress.",
+    keywords: ["ai screen printing software", "is there ai for screen printing", "ai for screen printers"],
+    linkedPages: [AISEP, DOCTOR],
+    category: "separation",
+  },
+  {
+    id: "automatic-color-separation-explained",
+    title: "Automatic Color Separation: How It Works and What to Expect",
+    intent: "Printer evaluating automated/AI separation vs hand-separating in Photoshop.",
+    keywords: ["automatic color separation", "auto color separation software", "automated screen printing seps"],
+    linkedPages: [AISEP],
+    category: "separation",
+  },
+  {
+    id: "ai-vs-manual-color-separation",
+    title: "AI vs Manual Color Separation: Which Is Better?",
+    intent: "Experienced separator weighing AI-assisted seps against hand separation.",
+    keywords: ["ai vs manual color separation", "ai color separation accuracy", "should i use ai for seps"],
+    linkedPages: [AISEP, PROFIT],
+    category: "separation",
   },
 ];
