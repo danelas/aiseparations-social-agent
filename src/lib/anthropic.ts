@@ -97,32 +97,61 @@ End the post with a short CTA paragraph: invite the reader to try AI Separations
 
 Return ONLY the JSON object — no prose, no markdown fence.`;
 
+// Tool schema — forcing a tool call makes the SDK return a validated object,
+// so HTML bodies with quotes/newlines can never break a JSON.parse (the old bug).
+const POST_TOOL = {
+  name: "emit_post",
+  description: "Return the finished blog post as structured data.",
+  input_schema: {
+    type: "object" as const,
+    properties: {
+      title: { type: "string" },
+      slug: { type: "string" },
+      metaDescription: { type: "string" },
+      h1: { type: "string" },
+      excerpt: { type: "string" },
+      sections: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: { heading: { type: "string" }, body: { type: "string" } },
+          required: ["heading", "body"],
+        },
+      },
+      faqs: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: { question: { type: "string" }, answer: { type: "string" } },
+          required: ["question", "answer"],
+        },
+      },
+      heroImagePrompt: { type: "string" },
+    },
+    required: ["title", "slug", "metaDescription", "h1", "excerpt", "sections", "faqs", "heroImagePrompt"],
+  },
+};
+
 export async function draftPost(topic: Topic): Promise<DraftedPost> {
   const c = client();
   const response = await c.messages.create({
     model: "claude-sonnet-4-5-20250929",
     max_tokens: 8000,
     system: SYSTEM,
+    tools: [POST_TOOL as any],
+    tool_choice: { type: "tool", name: "emit_post" },
     messages: [{ role: "user", content: PROMPT_TEMPLATE(topic) }],
   });
 
-  const textBlock = response.content.find((b) => b.type === "text");
-  if (!textBlock || textBlock.type !== "text") {
-    throw new Error("Claude returned no text content");
+  const toolBlock = response.content.find((b) => b.type === "tool_use");
+  if (!toolBlock || toolBlock.type !== "tool_use") {
+    if (response.stop_reason === "max_tokens") {
+      throw new Error("Claude hit max_tokens before finishing the post — raise max_tokens.");
+    }
+    throw new Error("Claude did not return the emit_post tool call");
   }
 
-  // Strip any accidental markdown fences.
-  let raw = textBlock.text.trim();
-  if (raw.startsWith("```")) raw = raw.replace(/^```(?:json)?\n?/, "").replace(/```$/, "").trim();
-
-  let parsed: DraftedPost;
-  try {
-    parsed = JSON.parse(raw) as DraftedPost;
-  } catch (err) {
-    throw new Error(
-      `Claude response was not valid JSON. First 400 chars:\n${raw.slice(0, 400)}\n\nError: ${(err as Error).message}`,
-    );
-  }
+  const parsed = toolBlock.input as DraftedPost;
 
   // Sanity-check the response shape.
   const required: Array<keyof DraftedPost> = [
