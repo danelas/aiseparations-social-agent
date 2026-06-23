@@ -1,0 +1,53 @@
+name: Daily social post
+
+on:
+  schedule:
+    - cron: "0 16 * * *"   # 16:00 UTC daily (~11-12 ET)
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Dry run (generate only, do not post)"
+        type: boolean
+        default: false
+
+concurrency:
+  group: social
+  cancel-in-progress: false
+
+jobs:
+  post:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: social
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - run: npm install
+
+      - name: Generate + publish the daily social post
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          UPLOAD_POST_API_KEY: ${{ secrets.UPLOAD_POST_API_KEY }}
+          UPLOAD_POST_USER: ${{ secrets.UPLOAD_POST_USER }}
+          UPLOAD_POST_EXPECTED_HANDLES: ${{ secrets.UPLOAD_POST_EXPECTED_HANDLES }}
+        run: |
+          if [ "${{ inputs.dry_run }}" = "true" ]; then
+            npm run post:dry
+          else
+            npm run post
+          fi
+
+      - name: Save preview artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: social-preview
+          path: social/preview/
+          if-no-files-found: ignore
