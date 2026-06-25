@@ -194,29 +194,39 @@ export async function postToUploadPost(input: PostInput): Promise<unknown> {
   if (platforms.includes("facebook")) {
     const pageId = process.env.FACEBOOK_PAGE_ID;
     if (!pageId) {
-      throw new Error(
-        "FACEBOOK_PAGE_ID not set — required when posting to Facebook to prevent misrouted posts. " +
-          "Get the ID from https://api.upload-post.com/api/uploadposts/facebook/pages?profile=" +
-          encodeURIComponent(userProfile()) +
-          " (or FB Page → About → Page transparency → Page ID)."
-      );
-    }
-    const reachable = await preflightFacebookPage(pageId);
-    if (!reachable) {
+      // Missing page id can't be posted safely (risk of misrouting), but it
+      // must NOT sink the whole post — drop FB and ship everything else.
       console.warn(
-        `[upload-post] SKIPPING facebook for this post — FACEBOOK_PAGE_ID is not in the profile's connected-Page list. ` +
-          `See the FB diagnostic above for the exact connected Pages.\n` +
-          `FIX (this is at Facebook's level, not Upload-Post's):\n` +
-          `  1. Go to https://www.facebook.com/settings?tab=business_tools and click "Remove" on Upload-Post.\n` +
-          `  2. Reconnect Facebook on upload-post.com. When FB pops up the auth dialog, click the small "Edit settings" link (or "Choose what you allow") and CHECK the Gold Touch List Page.\n` +
-          `  3. Also set the per-profile default Page at https://app.upload-post.com/manage-users (support's preferred routing control).\n` +
-          `  4. Confirm with: curl -H "Authorization: Apikey $UPLOAD_POST_API_KEY" "https://api.upload-post.com/api/uploadposts/facebook/pages?profile=$UPLOAD_POST_USER" — Gold Touch List must appear in the list.`
+        "[upload-post] SKIPPING facebook for this post — FACEBOOK_PAGE_ID is not set. " +
+          "It's required to route FB posts to the right Page; the other platforms still post. " +
+          "To re-enable Facebook, get the ID from https://api.upload-post.com/api/uploadposts/facebook/pages?profile=" +
+          encodeURIComponent(userProfile()) +
+          " (or FB Page → About → Page transparency → Page ID) and set it as the FACEBOOK_PAGE_ID secret."
       );
       platforms = platforms.filter((p) => p !== "facebook");
       if (platforms.length === 0) {
         throw new Error(
-          "Refusing to post: facebook was the only target platform and its OAuth grant is broken (see warning above)."
+          "Refusing to post: facebook was the only target platform and FACEBOOK_PAGE_ID is not set (see warning above)."
         );
+      }
+    } else {
+      const reachable = await preflightFacebookPage(pageId);
+      if (!reachable) {
+        console.warn(
+          `[upload-post] SKIPPING facebook for this post — FACEBOOK_PAGE_ID is not in the profile's connected-Page list. ` +
+            `See the FB diagnostic above for the exact connected Pages.\n` +
+            `FIX (this is at Facebook's level, not Upload-Post's):\n` +
+            `  1. Go to https://www.facebook.com/settings?tab=business_tools and click "Remove" on Upload-Post.\n` +
+            `  2. Reconnect Facebook on upload-post.com. When FB pops up the auth dialog, click the small "Edit settings" link (or "Choose what you allow") and CHECK the correct Page.\n` +
+            `  3. Also set the per-profile default Page at https://app.upload-post.com/manage-users (support's preferred routing control).\n` +
+            `  4. Confirm with: curl -H "Authorization: Apikey $UPLOAD_POST_API_KEY" "https://api.upload-post.com/api/uploadposts/facebook/pages?profile=$UPLOAD_POST_USER" — your Page must appear in the list.`
+        );
+        platforms = platforms.filter((p) => p !== "facebook");
+        if (platforms.length === 0) {
+          throw new Error(
+            "Refusing to post: facebook was the only target platform and its OAuth grant is broken (see warning above)."
+          );
+        }
       }
     }
   }
