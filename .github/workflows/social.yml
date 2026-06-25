@@ -36,6 +36,10 @@ jobs:
       - name: Install separation engine deps
         run: pip install -r demo/requirements.txt
 
+      # Animated demo videos need ffmpeg (preinstalled on ubuntu runners; guard anyway).
+      - name: Ensure ffmpeg
+        run: ffmpeg -version >/dev/null 2>&1 || (sudo apt-get update && sudo apt-get install -y ffmpeg)
+
       - run: npm install
 
       - name: Generate + publish the daily social post

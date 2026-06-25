@@ -11,6 +11,7 @@
     "post:demo": "tsx src/index.ts --force-demo",
     "post:demo:dry": "tsx src/index.ts --force-demo --dry-run",
     "post:video": "tsx src/index.ts --force-video",
+    "post:video:dry": "tsx src/index.ts --force-video --dry-run",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

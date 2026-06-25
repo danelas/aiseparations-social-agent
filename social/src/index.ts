@@ -5,7 +5,7 @@ import { resolve } from "node:path";
 import { existsSync } from "node:fs";
 import { PILLARS, planPost, planDemo } from "./planner.ts";
 import { generateImage } from "./generators/image.ts";
-import { separateToCard } from "./generators/demo.ts";
+import { separateToCard, separateToVideo } from "./generators/demo.ts";
 import { postToUploadPost, type Platform } from "./posters/uploadpost.ts";
 import { makePreviewDir, writeJson, writeText } from "./util/preview.ts";
 
@@ -30,13 +30,19 @@ async function main() {
   let isVideo = dayIndex % 4 === 0;
   if (FORCE_IMAGE || FORCE_DEMO) isVideo = false;
   if (FORCE_VIDEO) isVideo = true;
-  if (isVideo && !existsSync(PROMO_VIDEO)) {
-    console.warn(`[social] no promo clip at ${PROMO_VIDEO} — falling back to an image post`);
-    isVideo = false;
-  }
 
   if (isVideo) {
-    return runVideo();
+    // Prefer a fresh animated before/after reveal; fall back to the static
+    // promo clip, then to a demo image, so a video day never goes silent.
+    try {
+      return await runDemoVideo(dir);
+    } catch (err) {
+      console.warn("[social] demo video failed, trying promo clip:", err);
+    }
+    if (existsSync(PROMO_VIDEO)) {
+      return runVideo();
+    }
+    console.warn("[social] no promo clip — falling back to a demo image");
   }
 
   // Image days default to a real before/after engine demo (the strongest proof
@@ -72,6 +78,46 @@ async function runVideo() {
     platforms: VIDEO_PLATFORMS,
   });
   console.log("[social] video posted:", r);
+}
+
+async function runDemoVideo(dir: string) {
+  console.log("[social] media=demo-video (animated before/after reveal)");
+  const plan = await planDemo();
+  await writeJson(resolve(dir, "plan.json"), plan);
+  console.log(`[social] concept="${plan.concept}"`);
+
+  // 1. Render the artwork to separate.
+  const artPath = resolve(dir, "art.png");
+  await generateImage(plan.artPrompt, artPath, "1024x1024");
+
+  // 2. Run the real engine → animated 9:16 reveal + separation metadata.
+  const videoPath = resolve(dir, "video.mp4");
+  const metaPath = resolve(dir, "meta.json");
+  const meta = await separateToVideo(artPath, videoPath, metaPath);
+  console.log(`[social] separated: ${meta.used} colors, recommend ${meta.recommend}`);
+
+  // 3. Ground the caption in the engine's actual result.
+  const resultLine = `→ ${meta.used} spot colors • best as ${meta.recommend}. Free trial at aiseparations.com`;
+  const body = plan.captionInstagram.includes("{{RESULT}}")
+    ? plan.captionInstagram.replace("{{RESULT}}", resultLine)
+    : `${plan.captionInstagram}\n\n${resultLine}`;
+  const tags = plan.hashtags.map((h) => `#${h.replace(/^#/, "")}`);
+  const shortCaption = `${body.split("\n")[0]} ${tags.slice(0, 5).join(" ")}`.trim();
+  await writeText(resolve(dir, "caption.txt"), `${body}\n\n${tags.join(" ")}`.trim());
+
+  if (DRY_RUN) {
+    console.log("[social] dry-run — would post DEMO VIDEO to", VIDEO_PLATFORMS.join("+"));
+    console.log(shortCaption);
+    return;
+  }
+  const r = await postToUploadPost({
+    caption: shortCaption,
+    title: `AI Separations — ${plan.concept}`,
+    mediaPath: videoPath,
+    mediaKind: "video",
+    platforms: VIDEO_PLATFORMS,
+  });
+  console.log("[social] demo video posted:", r);
 }
 
 async function runDemo(dir: string) {
