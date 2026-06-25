@@ -8,6 +8,8 @@
     "post": "tsx src/index.ts",
     "post:dry": "tsx src/index.ts --dry-run",
     "post:image": "tsx src/index.ts --force-image",
+    "post:demo": "tsx src/index.ts --force-demo",
+    "post:demo:dry": "tsx src/index.ts --force-demo --dry-run",
     "post:video": "tsx src/index.ts --force-video",
     "typecheck": "tsc --noEmit"
   },

@@ -45,6 +45,56 @@ function client(): Anthropic {
   return _client;
 }
 
+// ---- Before/after demo posts -----------------------------------------------
+// A "demo" post shows real engine output: a piece of artwork → its separated
+// spot-color screens. Claude invents a fresh artwork concept + the gpt-image-1
+// prompt to render it, plus the caption framing. The actual color count and
+// ink recommendation are filled in from the engine afterwards, so we never
+// invent the numbers here.
+
+export type DemoPlan = {
+  concept: string;               // short internal label, e.g. "retro surf sunset"
+  artPrompt: string;             // gpt-image-1 prompt for the artwork to separate
+  captionInstagram: string;      // before/after framing, ends with a {{RESULT}} placeholder line
+  captionShort: string;          // <=150 chars
+  hashtags: string[];
+};
+
+const DEMO_SYSTEM = `You create "before/after" demo posts for AI Separations (aiseparations.com) — a prepress app that turns finished artwork into press-ready spot-color screens for screen printing (no Photoshop, $179 one-time, free trial).
+
+The post shows a real artwork on top and its automatically-separated ink screens below. Your job: invent ONE fresh piece of artwork to feature, and write the caption.
+
+The artwork must be a BOLD, FLAT, LIMITED-COLOR design that looks like real client art a shop would print on a tee — think mascots, badges, retro/vintage logos, illustrative graphics. It must separate cleanly into a few spot colors.
+
+OUTPUT: return ONE JSON object, no markdown:
+{
+  "concept": "<3-5 word label, e.g. 'snarling tiger mascot'>",
+  "artPrompt": "<2-3 sentence gpt-image-1 prompt. A bold flat vector-style screen-print graphic of the concept, limited palette (3-5 solid colors), clean shapes, centered on a PLAIN white or solid background. NO photographic realism, NO gradients/soft shading, NO text/letters/numbers, NO logos or brand names, NO faces of real people. Looks like artwork ready for a t-shirt.>",
+  "captionInstagram": "<2-4 short lines. Hook first line about dropping this art into AI Separations and getting press-ready screens out. Do NOT state a specific number of colors — that gets appended automatically. End the lines, then on its own final line put exactly: {{RESULT}}>",
+  "captionShort": "<one line, <=150 chars, before/after framing, no specific color count>",
+  "hashtags": ["screenprinting", "...8-12 relevant tags, no # prefix..."]
+}`;
+
+export async function planDemo(): Promise<DemoPlan> {
+  const c = client();
+  const resp = await c.messages.create({
+    model: "claude-sonnet-4-5-20250929",
+    max_tokens: 1000,
+    system: DEMO_SYSTEM,
+    messages: [{ role: "user", content: "Invent today's demo artwork and write the post. Return ONLY the JSON object." }],
+  });
+  const block = resp.content.find((b) => b.type === "text");
+  if (!block || block.type !== "text") throw new Error("Claude returned no text");
+  let raw = block.text.trim();
+  if (raw.startsWith("```")) raw = raw.replace(/^```(?:json)?\n?/, "").replace(/```$/, "").trim();
+  const plan = JSON.parse(raw) as DemoPlan;
+  if (!plan.artPrompt || !plan.captionInstagram) throw new Error("demo plan missing fields");
+  if (!Array.isArray(plan.hashtags)) plan.hashtags = [];
+  if (!plan.captionShort) plan.captionShort = plan.captionInstagram.split("\n")[0] ?? plan.concept;
+  if (!plan.concept) plan.concept = "demo";
+  return plan;
+}
+
 export async function planPost(pillar: string): Promise<PostPlan> {
   const c = client();
   const resp = await c.messages.create({

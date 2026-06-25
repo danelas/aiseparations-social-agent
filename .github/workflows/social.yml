@@ -28,6 +28,14 @@ jobs:
         with:
           node-version: "20"
 
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # The before/after demo posts run the vendored separation engine (numpy + Pillow).
+      - name: Install separation engine deps
+        run: pip install -r demo/requirements.txt
+
       - run: npm install
 
       - name: Generate + publish the daily social post
