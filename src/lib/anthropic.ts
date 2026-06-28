@@ -132,11 +132,13 @@ const POST_TOOL = {
   },
 };
 
-export async function draftPost(topic: Topic): Promise<DraftedPost> {
+async function draftPostOnce(topic: Topic): Promise<DraftedPost> {
   const c = client();
   const response = await c.messages.create({
     model: "claude-sonnet-4-5-20250929",
-    max_tokens: 8000,
+    // 16K headroom: an 8K cap can truncate a 1,000-1,500 word HTML post +
+    // 5 FAQs mid-tool-call, which surfaces downstream as "no sections".
+    max_tokens: 16000,
     system: SYSTEM,
     tools: [POST_TOOL as any],
     tool_choice: { type: "tool", name: "emit_post" },
@@ -166,4 +168,24 @@ export async function draftPost(topic: Topic): Promise<DraftedPost> {
   if (!Array.isArray(parsed.faqs)) parsed.faqs = [];
 
   return parsed;
+}
+
+/**
+ * Draft a post, retrying a few times. A single flaky/truncated model response
+ * (empty sections, missing field, transient API error) shouldn't sink the
+ * whole daily run — these are independent samples, so a retry almost always
+ * succeeds.
+ */
+export async function draftPost(topic: Topic, attempts = 3): Promise<DraftedPost> {
+  let lastErr: unknown;
+  for (let i = 1; i <= attempts; i++) {
+    try {
+      return await draftPostOnce(topic);
+    } catch (err) {
+      lastErr = err;
+      console.warn(`[anthropic] draft attempt ${i}/${attempts} failed: ${(err as Error).message}`);
+      if (i < attempts) await new Promise((r) => setTimeout(r, 2000 * i));
+    }
+  }
+  throw lastErr;
 }
