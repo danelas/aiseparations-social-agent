@@ -30,11 +30,15 @@ export async function cloneWebsite(): Promise<string> {
   const repo = (process.env.WEBSITE_REPO ?? "").trim();
   const branch = (process.env.WEBSITE_BRANCH ?? "main").trim() || "main";
   const token = (process.env.WEBSITE_REPO_TOKEN ?? "").trim();
-  const authorName = (process.env.GIT_AUTHOR_NAME ?? "ASAP Blog Agent").trim();
+  // A missing GitHub Actions secret is passed to the job as an EMPTY string,
+  // not unset — so `??` (which only catches null/undefined) lets "" through
+  // and git then fails with "empty ident name". Use `||` so a blank/whitespace
+  // value falls back to the default too.
+  const authorName = (process.env.GIT_AUTHOR_NAME ?? "").trim() || "AI Separations Blog Agent";
   // Vercel refuses to deploy commits whose author email isn't tied to a real
   // GitHub account, so this MUST be the email on the repo owner's GitHub login
   // (not a vanity bot address) or deployments silently fail to publish.
-  const authorEmail = (process.env.GIT_AUTHOR_EMAIL ?? "danamazon6@gmail.com").trim();
+  const authorEmail = (process.env.GIT_AUTHOR_EMAIL ?? "").trim() || "danamazon6@gmail.com";
   if (!repo) throw new Error("WEBSITE_REPO not set");
   if (!token) throw new Error("WEBSITE_REPO_TOKEN not set");
 
