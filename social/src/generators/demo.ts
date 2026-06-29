@@ -53,16 +53,22 @@ export async function separateToCard(
 }
 
 /**
- * Separate `artPath` and render an animated 9:16 before/after reveal mp4 to
- * `videoPath` (for Shorts/Reels/TikTok). Returns the engine's real metadata.
- * Requires ffmpeg on PATH (preinstalled on GitHub-hosted ubuntu runners).
+ * Separate `artPath` and render an animated before/after reveal mp4 to
+ * `videoPath`. Returns the engine's real metadata. Requires ffmpeg on PATH
+ * (preinstalled on GitHub-hosted ubuntu runners).
+ *
+ * `aspect` controls the format:
+ *   "portrait"  → 9:16 (1080x1920) for Shorts / Reels / TikTok (default)
+ *   "landscape" → 16:9 (1920x1080) for regular YouTube long-form
  */
 export async function separateToVideo(
   artPath: string,
   videoPath: string,
   metaPath: string,
-  opts: { garment?: "dark" | "light" } = {}
+  opts: { garment?: "dark" | "light"; aspect?: "portrait" | "landscape" } = {}
 ): Promise<SepMeta> {
-  await runPython([VIDEO_SCRIPT, artPath, videoPath, metaPath, "--garment", opts.garment ?? "dark"]);
+  const args = [VIDEO_SCRIPT, artPath, videoPath, metaPath, "--garment", opts.garment ?? "dark"];
+  if (opts.aspect) args.push("--aspect", opts.aspect);
+  await runPython(args);
   return JSON.parse(await readFile(metaPath, "utf8")) as SepMeta;
 }

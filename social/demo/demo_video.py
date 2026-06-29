@@ -1,5 +1,9 @@
 """
-Animated 9:16 before/after reveal for Shorts / Reels / TikTok.
+Animated before/after reveal of a real color separation.
+
+Two aspects:
+    portrait  (9:16, 1080x1920) — Shorts / Reels / TikTok (default)
+    landscape (16:9, 1920x1080) — regular YouTube long-form (side-by-side)
 
 Reuses the real separation from separate_demo.py, then animates:
     header → "YOUR ART" → screens reveal one-by-one → count + CTA
@@ -8,7 +12,8 @@ Renders frames with Pillow and encodes to mp4 with ffmpeg (preinstalled on
 GitHub-hosted ubuntu runners). Pure numpy + Pillow for the math; no scipy.
 
 Usage:
-    python demo_video.py <art.png> <out.mp4> <out_meta.json> [--garment dark|light]
+    python demo_video.py <art.png> <out.mp4> <out_meta.json> \
+        [--garment dark|light] [--aspect portrait|landscape]
 """
 from __future__ import annotations
 
@@ -29,7 +34,6 @@ from separate_demo import (  # noqa: E402
     BG, PANEL, INDIGO, CYAN, INK_TILE_BG, TEXT, MUTED, LUMA,
 )
 
-VW, VH = 1080, 1920
 MARGIN = 70
 FPS = 30
 
@@ -55,45 +59,84 @@ def _paste_alpha(canvas: Image.Image, layer: Image.Image, xy, a: float):
     canvas.alpha_composite(layer, dest=(int(xy[0]), int(xy[1])))
 
 
-def _text_layer(text, font, fill, anchor_box=None):
+def _text_layer(text, font, fill, anchor_box, size):
     """A full-canvas transparent layer with `text` drawn — caller composites it."""
-    layer = Image.new("RGBA", (VW, VH), (0, 0, 0, 0))
+    layer = Image.new("RGBA", size, (0, 0, 0, 0))
     d = ImageDraw.Draw(layer)
     d.text((anchor_box[0], anchor_box[1]), text, font=font, fill=fill + (255,))
     return layer
 
 
-def build(art_path, out_path, garment):
+def build(art_path, out_path, garment, aspect="portrait"):
     dark = garment != "light"
     rgb, alpha, inks, coverages, count, k, recommend = separate(art_path, None, dark)
     n = inks.shape[0]
 
-    # ---- pre-render static pieces ------------------------------------------
-    inner = VW - 2 * MARGIN
+    landscape = aspect == "landscape"
+    VW, VH = (1920, 1080) if landscape else (1080, 1920)
+    size = (VW, VH)
+
     f_brand = _font(40, bold=True)
-    f_title = _font(72, bold=True)
-    f_label = _font(40, bold=True)
-    f_small = _font(32)
-    f_chip = _font(30, bold=True)
-    f_foot = _font(46, bold=True)
+    f_title = _font(60 if landscape else 72, bold=True)
+    f_label = _font(38 if landscape else 40, bold=True)
+    f_small = _font(30 if landscape else 32)
+    f_chip = _font(28 if landscape else 30, bold=True)
+    f_foot = _font(44 if landscape else 46, bold=True)
+
+    # ---- layout: portrait stacks vertically; landscape is art | screens ----
+    gap = 22
+    y_header = MARGIN
+    if landscape:
+        col_gap = 56
+        art_w = 800
+        x_art = MARGIN
+        x_right = MARGIN + art_w + col_gap
+        right_w = VW - x_right - MARGIN
+        footer_h = 132
+        y_footer = VH - footer_h - MARGIN
+        y_art = y_header + 140
+        art_box_h = y_footer - y_art - 26
+        y_sep = y_art                      # "separated into…" labels the right column
+        y_grid = y_art + 56
+        grid_w = right_w
+        grid_avail_h = y_footer - y_grid - 14
+        footer_w = VW - 2 * MARGIN
+        x_footer = MARGIN
+    else:
+        inner = VW - 2 * MARGIN
+        art_w = inner
+        x_art = MARGIN
+        art_box_h = 620
+        y_art = y_header + 150
+        y_sep = y_art + art_box_h + 46
+        y_grid = y_sep + 70
+        x_right = MARGIN
+        grid_w = inner
+        grid_avail_h = None
+        footer_h = 150
+        y_footer = VH - footer_h - MARGIN
+        footer_w = inner
+        x_footer = MARGIN
 
     # artwork panel
     art = _art_image(rgb, alpha)
-    art_box_h = 620
     art_fit = art.copy()
-    art_fit.thumbnail((inner - 40, art_box_h - 40), Image.LANCZOS)
-    art_panel = Image.new("RGBA", (inner, art_box_h), (0, 0, 0, 0))
+    art_fit.thumbnail((art_w - 40, art_box_h - 40), Image.LANCZOS)
+    art_panel = Image.new("RGBA", (art_w, art_box_h), (0, 0, 0, 0))
     ad = ImageDraw.Draw(art_panel)
-    ad.rounded_rectangle((0, 0, inner, art_box_h), 28, fill=PANEL + (255,))
-    art_panel.paste(art_fit, ((inner - art_fit.width) // 2, (art_box_h - art_fit.height) // 2))
+    ad.rounded_rectangle((0, 0, art_w, art_box_h), 28, fill=PANEL + (255,))
+    art_panel.paste(art_fit, ((art_w - art_fit.width) // 2, (art_box_h - art_fit.height) // 2))
     ad.rounded_rectangle((20, 20, 20 + ad.textlength("YOUR ART", font=f_chip) + 36, 70), 12, fill=INDIGO + (255,))
     ad.text((40, 30), "YOUR ART", font=f_chip, fill=TEXT + (255,))
 
-    # channel tiles (square, with hex label baked under)
-    cols = min(n, 3)
+    # channel tiles (square, with hex label baked under). Tile size is driven by
+    # the column width, then clamped so the grid fits the available height too.
+    cols = min(n, 4) if landscape else min(n, 3)
     rows = (n + cols - 1) // cols
-    gap = 22
-    tile = (inner - gap * (cols - 1)) // cols
+    tile = (grid_w - gap * (cols - 1)) // cols
+    if grid_avail_h is not None and rows > 0:
+        max_tile = (grid_avail_h - gap * (rows - 1)) // rows - 44
+        tile = max(60, min(tile, max_tile))
     tiles = []
     for i in range(n):
         cell = Image.new("RGBA", (tile, tile + 44), (0, 0, 0, 0))
@@ -105,13 +148,8 @@ def build(art_path, out_path, garment):
         cd.text((40, tile + 6), _hex(inks[i]), font=f_small, fill=MUTED + (255,))
         tiles.append(cell)
 
-    # layout anchors
-    y_header = MARGIN
-    y_art = y_header + 150
-    y_sep = y_art + art_box_h + 46
-    y_grid = y_sep + 70
-    grid_h = rows * (tile + 44) + (rows - 1) * gap
-    x_grid = MARGIN + (inner - (cols * tile + (cols - 1) * gap)) // 2
+    grid_total_w = cols * tile + (cols - 1) * gap
+    x_grid = x_right + (grid_w - grid_total_w) // 2
 
     # ---- timeline ----------------------------------------------------------
     t_header = 0.0
@@ -135,16 +173,16 @@ def build(art_path, out_path, garment):
 
             # header
             ah = _seg(t, t_header, 0.5)
-            _paste_alpha(canvas, _text_layer("AI SEPARATIONS", f_brand, CYAN, (MARGIN, y_header)), (0, 0), ah)
-            _paste_alpha(canvas, _text_layer("Art → press-ready screens", f_title, TEXT, (MARGIN, y_header + 54)), (0, 0), ah)
+            _paste_alpha(canvas, _text_layer("AI SEPARATIONS", f_brand, CYAN, (MARGIN, y_header), size), (0, 0), ah)
+            _paste_alpha(canvas, _text_layer("Art → press-ready screens", f_title, TEXT, (MARGIN, y_header + 54), size), (0, 0), ah)
 
             # art panel (fade + slight rise)
             aa = _seg(t, t_art, 0.9)
-            _paste_alpha(canvas, art_panel, (MARGIN, y_art + (1 - aa) * 30), aa)
+            _paste_alpha(canvas, art_panel, (x_art, y_art + (1 - aa) * 30), aa)
 
-            # separating label
+            # separating label (labels the screens column)
             sa = _seg(t, t_sep, 0.4)
-            _paste_alpha(canvas, _text_layer("▼  " + sep_txt, f_label, CYAN, (MARGIN, y_sep)), (0, 0), sa)
+            _paste_alpha(canvas, _text_layer("▼  " + sep_txt, f_label, CYAN, (x_right, y_sep), size), (0, 0), sa)
 
             # channel tiles, staggered
             for i, cell in enumerate(tiles):
@@ -159,12 +197,12 @@ def build(art_path, out_path, garment):
             # footer band
             fa = _seg(t, t_footer, 0.5)
             if fa > 0:
-                band = Image.new("RGBA", (inner, 150), (0, 0, 0, 0))
+                band = Image.new("RGBA", (footer_w, footer_h), (0, 0, 0, 0))
                 bd = ImageDraw.Draw(band)
-                bd.rounded_rectangle((0, 0, inner, 150), 24, fill=PANEL + (255,))
-                bd.text((30, 26), foot1, font=f_foot, fill=TEXT + (255,))
-                bd.text((30, 90), foot2, font=f_small, fill=CYAN + (255,))
-                _paste_alpha(canvas, band, (MARGIN, VH - 150 - MARGIN), fa)
+                bd.rounded_rectangle((0, 0, footer_w, footer_h), 24, fill=PANEL + (255,))
+                bd.text((30, int(footer_h * 0.17)), foot1, font=f_foot, fill=TEXT + (255,))
+                bd.text((30, int(footer_h * 0.58)), foot2, font=f_small, fill=CYAN + (255,))
+                _paste_alpha(canvas, band, (x_footer, y_footer), fa)
 
             canvas.convert("RGB").save(os.path.join(tmp, f"f{fi:04d}.png"))
 
@@ -189,8 +227,9 @@ def main():
     ap.add_argument("out_video")
     ap.add_argument("out_meta")
     ap.add_argument("--garment", default="dark")
+    ap.add_argument("--aspect", default="portrait", choices=["portrait", "landscape"])
     args = ap.parse_args()
-    meta = build(args.art, args.out_video, args.garment)
+    meta = build(args.art, args.out_video, args.garment, args.aspect)
     with open(args.out_meta, "w", encoding="utf-8") as fh:
         json.dump(meta, fh)
     print(json.dumps(meta))

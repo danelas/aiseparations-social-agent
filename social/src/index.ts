@@ -107,6 +107,7 @@ async function runDemoVideo(dir: string) {
 
   if (DRY_RUN) {
     console.log("[social] dry-run — would post DEMO VIDEO to", VIDEO_PLATFORMS.join("+"));
+    console.log("[social] dry-run — would also post a LANDSCAPE 16:9 cut to youtube");
     console.log(shortCaption);
     return;
   }
@@ -118,6 +119,38 @@ async function runDemoVideo(dir: string) {
     platforms: VIDEO_PLATFORMS,
   });
   console.log("[social] demo video posted:", r);
+
+  // YouTube-specific: render a landscape 16:9 cut of the same separation and
+  // upload it to YouTube as a regular (long-form) video with a fuller title +
+  // description. The vertical above already covers YouTube Shorts. Wrapped so a
+  // landscape failure never sinks the vertical that already shipped.
+  try {
+    const landscapePath = resolve(dir, "video-landscape.mp4");
+    await separateToVideo(artPath, landscapePath, resolve(dir, "meta-landscape.json"), {
+      aspect: "landscape",
+    });
+    const ytTitle = `Color separation in 30 seconds — ${plan.concept} | AI Separations`.slice(0, 100);
+    const ytDescription = [
+      body,
+      "",
+      "AI Separations turns customer artwork into press-ready color separations — detected spot inks, a white underbase, halftones at your LPI, and a film positive per color. The real engine, no Photoshop.",
+      "",
+      "▶ Try it free on your own art: https://aiseparations.com/free-separation",
+      "▶ Get the desktop app: https://aiseparations.com/#pricing",
+      "",
+      tags.join(" "),
+    ].join("\n");
+    const ry = await postToUploadPost({
+      caption: ytDescription,
+      title: ytTitle,
+      mediaPath: landscapePath,
+      mediaKind: "video",
+      platforms: ["youtube"],
+    });
+    console.log("[social] youtube landscape posted:", ry);
+  } catch (err) {
+    console.warn("[social] landscape YouTube upload failed (vertical still shipped):", err);
+  }
 }
 
 async function runDemo(dir: string) {
