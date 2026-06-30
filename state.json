@@ -20,6 +20,13 @@
       "publishedAt": "2026-06-29T14:24:09.764Z",
       "url": "https://www.aiseparations.com/blog/halftones-lpi-mesh-explained",
       "commitSha": "58f93fa22e4576c12254699e04de4231be13b821"
+    },
+    {
+      "topicId": "is-my-artwork-print-ready",
+      "slug": "is-artwork-print-ready",
+      "publishedAt": "2026-06-30T13:37:11.481Z",
+      "url": "https://www.aiseparations.com/blog/is-artwork-print-ready",
+      "commitSha": "62548a31c898e0ffd53951d464a0c323eb3fcb16"
     }
   ]
 }
