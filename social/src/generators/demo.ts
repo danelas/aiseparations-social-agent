@@ -7,11 +7,14 @@ import { readFile } from "node:fs/promises";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
+export type SepMode = "spot" | "halftone";
+
 export type SepMeta = {
   count: number;        // total distinct inks the engine detected in the art
   used: number;         // inks actually separated into for the card
   colors: string[];     // hex swatches, darkest → lightest
   recommend: string;    // "plastisol" | "DTF"
+  mode?: SepMode;       // how the screens were rendered
 };
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -46,9 +49,11 @@ export async function separateToCard(
   artPath: string,
   cardPath: string,
   metaPath: string,
-  opts: { garment?: "dark" | "light" } = {}
+  opts: { garment?: "dark" | "light"; mode?: SepMode } = {}
 ): Promise<SepMeta> {
-  await runPython([CARD_SCRIPT, artPath, cardPath, metaPath, "--garment", opts.garment ?? "dark"]);
+  const args = [CARD_SCRIPT, artPath, cardPath, metaPath, "--garment", opts.garment ?? "dark"];
+  if (opts.mode) args.push("--mode", opts.mode);
+  await runPython(args);
   return JSON.parse(await readFile(metaPath, "utf8")) as SepMeta;
 }
 
@@ -65,10 +70,11 @@ export async function separateToVideo(
   artPath: string,
   videoPath: string,
   metaPath: string,
-  opts: { garment?: "dark" | "light"; aspect?: "portrait" | "landscape" } = {}
+  opts: { garment?: "dark" | "light"; aspect?: "portrait" | "landscape"; mode?: SepMode } = {}
 ): Promise<SepMeta> {
   const args = [VIDEO_SCRIPT, artPath, videoPath, metaPath, "--garment", opts.garment ?? "dark"];
   if (opts.aspect) args.push("--aspect", opts.aspect);
+  if (opts.mode) args.push("--mode", opts.mode);
   await runPython(args);
   return JSON.parse(await readFile(metaPath, "utf8")) as SepMeta;
 }

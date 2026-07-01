@@ -30,7 +30,8 @@ from PIL import Image, ImageDraw
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from separate_demo import (  # noqa: E402
-    separate, _art_image, _channel_tile, _font, _hex, _fit_square,
+    separate, _art_image, _channel_tile, _halftone_tile, HALFTONE_ANGLES,
+    _font, _hex, _fit_square,
     BG, PANEL, INDIGO, CYAN, INK_TILE_BG, TEXT, MUTED, LUMA,
 )
 
@@ -67,10 +68,11 @@ def _text_layer(text, font, fill, anchor_box, size):
     return layer
 
 
-def build(art_path, out_path, garment, aspect="portrait"):
+def build(art_path, out_path, garment, aspect="portrait", mode="spot"):
     dark = garment != "light"
     rgb, alpha, inks, coverages, count, k, recommend = separate(art_path, None, dark)
     n = inks.shape[0]
+    halftone_mode = mode == "halftone"
 
     landscape = aspect == "landscape"
     VW, VH = (1920, 1080) if landscape else (1080, 1920)
@@ -140,7 +142,11 @@ def build(art_path, out_path, garment, aspect="portrait"):
     tiles = []
     for i in range(n):
         cell = Image.new("RGBA", (tile, tile + 44), (0, 0, 0, 0))
-        timg = _channel_tile(coverages[..., i], inks[i], tile)
+        if halftone_mode:
+            timg = _halftone_tile(coverages[..., i], inks[i], tile,
+                                  HALFTONE_ANGLES[i % len(HALFTONE_ANGLES)])
+        else:
+            timg = _channel_tile(coverages[..., i], inks[i], tile)
         cell.paste(timg, (0, 0))
         cd = ImageDraw.Draw(cell)
         cd.rounded_rectangle((0, 0, tile, tile), 16, outline=(40, 46, 70, 255), width=2)
@@ -161,8 +167,14 @@ def build(art_path, out_path, garment, aspect="portrait"):
     duration = t_footer + 0.6 + 1.6
     total_frames = int(duration * FPS)
 
-    sep_txt = f"separated into {k} spot colors"
-    foot1 = f"{k} colors  •  best as {recommend}"
+    sep_txt = (
+        f"screened into {k} halftone channels" if halftone_mode
+        else f"separated into {k} spot colors"
+    )
+    foot1 = (
+        f"{k}-color simulated process  •  best as {recommend}" if halftone_mode
+        else f"{k} colors  •  best as {recommend}"
+    )
     foot2 = "Free trial → aiseparations.com"
 
     tmp = tempfile.mkdtemp(prefix="aisep_vid_")
@@ -218,7 +230,8 @@ def build(art_path, out_path, garment, aspect="portrait"):
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 
-    return {"count": count, "used": k, "colors": [_hex(c) for c in inks], "recommend": recommend}
+    return {"count": count, "used": k, "colors": [_hex(c) for c in inks],
+            "recommend": recommend, "mode": mode}
 
 
 def main():
@@ -228,8 +241,9 @@ def main():
     ap.add_argument("out_meta")
     ap.add_argument("--garment", default="dark")
     ap.add_argument("--aspect", default="portrait", choices=["portrait", "landscape"])
+    ap.add_argument("--mode", default="spot", choices=["spot", "halftone"])
     args = ap.parse_args()
-    meta = build(args.art, args.out_video, args.garment, args.aspect)
+    meta = build(args.art, args.out_video, args.garment, args.aspect, args.mode)
     with open(args.out_meta, "w", encoding="utf-8") as fh:
         json.dump(meta, fh)
     print(json.dumps(meta))

@@ -39,6 +39,12 @@ SPECKLE = 0.08
 WHITE = np.array([1.0, 1.0, 1.0], dtype=np.float32)
 LUMA = np.array([0.2126, 0.7152, 0.0722], dtype=np.float32)
 
+# ---- halftone showcase knobs (simulated-process demo) -----------------------
+# Chunky dots so the screen READS as halftone in a thumbnail — a real RIP
+# would use finer LPI, but on a phone screen fine dots just look solid.
+HALFTONE_ANGLES = [15.0, 75.0, 45.0, 0.0, 22.5, 67.5]
+HT_DPI, HT_LPI = 120, 17   # cell ≈ 7 px at display resolution
+
 # ---- brand palette (indigo / cyan on near-black) ----------------------------
 BG = (11, 14, 26)
 PANEL = (18, 22, 40)
@@ -121,6 +127,29 @@ def _channel_tile(cov: np.ndarray, ink: np.ndarray, size: int) -> Image.Image:
     return _fit_square(tile, size, bg=bg_rgb)
 
 
+def _halftone_tile(cov: np.ndarray, ink: np.ndarray, size: int, angle: float) -> Image.Image:
+    """One separated screen rendered as a HALFTONE dot field (simulated process)
+    — the real screening math from the engine, shrunk to display size first so
+    the dots stay crisp and chunky instead of aliasing when downscaled."""
+    from spot_sep import halftone
+
+    covimg = Image.fromarray((np.clip(cov, 0, 1) * 255).astype(np.uint8), "L")
+    covimg.thumbnail((size, size), Image.LANCZOS)
+    cov_fit = np.asarray(covimg, dtype=np.float32) / 255.0
+    dots = halftone(cov_fit, angle, HT_DPI, HT_LPI) > 0        # (h, w) bool, True = ink
+    h, w = cov_fit.shape
+
+    dark_ink = float(ink @ LUMA) < 0.32
+    tile_bg = (58, 64, 86) if dark_ink else INK_TILE_BG
+    patch = np.empty((h, w, 3), dtype=np.uint8)
+    patch[:] = tile_bg
+    patch[dots] = tuple(int(v) for v in (np.clip(ink, 0, 1) * 255).round())
+
+    canvas = Image.new("RGB", (size, size), tile_bg)
+    canvas.paste(Image.fromarray(patch, "RGB"), ((size - w) // 2, (size - h) // 2))
+    return canvas
+
+
 def _fit_square(img: Image.Image, size: int, bg=INK_TILE_BG) -> Image.Image:
     img = img.copy()
     img.thumbnail((size, size), Image.LANCZOS)
@@ -159,7 +188,7 @@ def _art_image(rgb: np.ndarray, alpha) -> Image.Image:
     return Image.fromarray((np.clip(rgb, 0, 1) * 255).astype(np.uint8), "RGB")
 
 
-def compose(rgb, alpha, inks, coverages, count, k, recommend, out_path):
+def compose(rgb, alpha, inks, coverages, count, k, recommend, out_path, mode="spot"):
     card = Image.new("RGB", (CARD_W, CARD_H), BG)
     d = ImageDraw.Draw(card)
     inner = CARD_W - 2 * MARGIN
@@ -194,7 +223,11 @@ def compose(rgb, alpha, inks, coverages, count, k, recommend, out_path):
     y += panel_h + 30
 
     # ---- arrow / caption ----------------------------------------------------
-    sep_txt = f"separated into {k} spot colors"
+    halftone_mode = mode == "halftone"
+    sep_txt = (
+        f"screened into {k} halftone channels" if halftone_mode
+        else f"separated into {k} spot colors"
+    )
     d.text((MARGIN, y), "▼  " + sep_txt, font=f_label, fill=CYAN)
     y += 50
 
@@ -217,7 +250,11 @@ def compose(rgb, alpha, inks, coverages, count, k, recommend, out_path):
         r, cc = divmod(i, cols)
         tx = x0 + cc * (tile + gap)
         ty = y + r * (tile + label_h + gap)
-        timg = _channel_tile(coverages[..., i], inks[i], tile)
+        if halftone_mode:
+            timg = _halftone_tile(coverages[..., i], inks[i], tile,
+                                  HALFTONE_ANGLES[i % len(HALFTONE_ANGLES)])
+        else:
+            timg = _channel_tile(coverages[..., i], inks[i], tile)
         card.paste(timg, (tx, ty))
         d.rounded_rectangle((tx, ty, tx + tile, ty + tile), 14, outline=(40, 46, 70), width=2)
         # hex label under each screen
@@ -229,7 +266,11 @@ def compose(rgb, alpha, inks, coverages, count, k, recommend, out_path):
     # ---- footer band --------------------------------------------------------
     band_y = CARD_H - 132
     _rounded_panel(d, (MARGIN, band_y, MARGIN + inner, band_y + 96), 20, PANEL)
-    line1 = f"{k} spot colors  •  best as {recommend}  •  no Photoshop"
+    line1 = (
+        f"{k}-color simulated process  •  best as {recommend}  •  no Photoshop"
+        if halftone_mode else
+        f"{k} spot colors  •  best as {recommend}  •  no Photoshop"
+    )
     d.text((MARGIN + 26, band_y + 18), line1, font=f_label, fill=TEXT)
     d.text((MARGIN + 26, band_y + 56), "Free trial → aiseparations.com", font=f_small, fill=CYAN)
 
@@ -244,17 +285,19 @@ def main():
     ap.add_argument("out_meta")
     ap.add_argument("--colors", default=None)
     ap.add_argument("--garment", default="dark")
+    ap.add_argument("--mode", default="spot", choices=["spot", "halftone"])
     args = ap.parse_args()
 
     dark = args.garment != "light"
     rgb, alpha, inks, coverages, count, k, recommend = separate(args.art, args.colors, dark)
-    compose(rgb, alpha, inks, coverages, count, k, recommend, args.out_card)
+    compose(rgb, alpha, inks, coverages, count, k, recommend, args.out_card, mode=args.mode)
 
     meta = {
         "count": count,
         "used": k,
         "colors": [_hex(c) for c in inks],
         "recommend": recommend,
+        "mode": args.mode,
     }
     with open(args.out_meta, "w", encoding="utf-8") as fh:
         json.dump(meta, fh)

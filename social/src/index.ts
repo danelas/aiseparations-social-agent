@@ -5,7 +5,7 @@ import { resolve } from "node:path";
 import { existsSync } from "node:fs";
 import { PILLARS, planPost, planDemo } from "./planner.ts";
 import { generateImage } from "./generators/image.ts";
-import { separateToCard, separateToVideo } from "./generators/demo.ts";
+import { separateToCard, separateToVideo, type SepMode } from "./generators/demo.ts";
 import { postToUploadPost, type Platform } from "./posters/uploadpost.ts";
 import { makePreviewDir, writeJson, writeText } from "./util/preview.ts";
 
@@ -26,8 +26,11 @@ async function main() {
   const dir = await makePreviewDir();
   const dayIndex = Math.floor(Date.now() / 86400000);
 
-  // ~1 in 4 days is a video (the promo clip); the rest are image days.
-  let isVideo = dayIndex % 4 === 0;
+  // Post to EVERY connected platform every day. YouTube & TikTok are
+  // video-only, so every day is a video day — one demo reveal ships to
+  // IG + TikTok + YouTube + Facebook (plus a landscape YouTube cut).
+  // FORCE_IMAGE / FORCE_DEMO still force the static image path for manual runs.
+  let isVideo = true;
   if (FORCE_IMAGE || FORCE_DEMO) isVideo = false;
   if (FORCE_VIDEO) isVideo = true;
 
@@ -91,13 +94,21 @@ async function runDemoVideo(dir: string) {
   await generateImage(plan.artPrompt, artPath, "1024x1024");
 
   // 2. Run the real engine → animated 9:16 reveal + separation metadata.
+  // Alternate spot vs halftone (simulated process) day-to-day so the feed
+  // showcases BOTH separation types.
+  const dayIndex = Math.floor(Date.now() / 86400000);
+  const demoMode: SepMode = dayIndex % 2 === 0 ? "halftone" : "spot";
   const videoPath = resolve(dir, "video.mp4");
   const metaPath = resolve(dir, "meta.json");
-  const meta = await separateToVideo(artPath, videoPath, metaPath);
-  console.log(`[social] separated: ${meta.used} colors, recommend ${meta.recommend}`);
+  const meta = await separateToVideo(artPath, videoPath, metaPath, { mode: demoMode });
+  console.log(`[social] separated: ${meta.used} colors (${meta.mode ?? "spot"}), recommend ${meta.recommend}`);
 
   // 3. Ground the caption in the engine's actual result.
-  const resultLine = `→ ${meta.used} spot colors • best as ${meta.recommend}. Free trial at aiseparations.com`;
+  const sepWord =
+    meta.mode === "halftone"
+      ? `${meta.used}-color simulated process`
+      : `${meta.used} spot colors`;
+  const resultLine = `→ ${sepWord} • best as ${meta.recommend}. Free trial at aiseparations.com`;
   const body = plan.captionInstagram.includes("{{RESULT}}")
     ? plan.captionInstagram.replace("{{RESULT}}", resultLine)
     : `${plan.captionInstagram}\n\n${resultLine}`;
@@ -128,6 +139,7 @@ async function runDemoVideo(dir: string) {
     const landscapePath = resolve(dir, "video-landscape.mp4");
     await separateToVideo(artPath, landscapePath, resolve(dir, "meta-landscape.json"), {
       aspect: "landscape",
+      mode: demoMode,
     });
     const ytTitle = `Color separation in 30 seconds — ${plan.concept} | AI Separations`.slice(0, 100);
     const ytDescription = [
@@ -164,13 +176,21 @@ async function runDemo(dir: string) {
   await generateImage(plan.artPrompt, artPath, "1024x1024");
 
   // 2. Run the real engine → branded before/after card + separation metadata.
+  // Alternate spot vs halftone (simulated process) day-to-day so the feed
+  // showcases BOTH separation types, not just spot.
+  const dayIndex = Math.floor(Date.now() / 86400000);
+  const demoMode: SepMode = dayIndex % 2 === 0 ? "halftone" : "spot";
   const cardPath = resolve(dir, "image.png");
   const metaPath = resolve(dir, "meta.json");
-  const meta = await separateToCard(artPath, cardPath, metaPath);
-  console.log(`[social] separated: ${meta.used} colors, recommend ${meta.recommend}`);
+  const meta = await separateToCard(artPath, cardPath, metaPath, { mode: demoMode });
+  console.log(`[social] separated: ${meta.used} colors (${meta.mode ?? "spot"}), recommend ${meta.recommend}`);
 
   // 3. Ground the caption in the engine's actual result.
-  const resultLine = `→ ${meta.used} spot colors • best as ${meta.recommend}. Free trial at aiseparations.com`;
+  const sepWord =
+    meta.mode === "halftone"
+      ? `${meta.used}-color simulated process`
+      : `${meta.used} spot colors`;
+  const resultLine = `→ ${sepWord} • best as ${meta.recommend}. Free trial at aiseparations.com`;
   const body = plan.captionInstagram.includes("{{RESULT}}")
     ? plan.captionInstagram.replace("{{RESULT}}", resultLine)
     : `${plan.captionInstagram}\n\n${resultLine}`;
