@@ -27,6 +27,13 @@
       "publishedAt": "2026-06-30T13:37:11.481Z",
       "url": "https://www.aiseparations.com/blog/is-artwork-print-ready",
       "commitSha": "62548a31c898e0ffd53951d464a0c323eb3fcb16"
+    },
+    {
+      "topicId": "artwork-resolution-for-screen-printing",
+      "slug": "artwork-resolution-screen-printing",
+      "publishedAt": "2026-07-01T13:49:10.780Z",
+      "url": "https://www.aiseparations.com/blog/artwork-resolution-screen-printing",
+      "commitSha": "997fbc56af8b89732e9c7fc0dd41e9f1ae5b6718"
     }
   ]
 }
