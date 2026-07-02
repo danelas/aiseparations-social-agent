@@ -206,20 +206,23 @@ def compose(rgb, alpha, inks, coverages, count, k, recommend, out_path, mode="sp
     y += 84
 
     # ---- BEFORE panel -------------------------------------------------------
+    # Reserve a top band for the "YOUR ART" badge so it never covers the artwork
+    # (a logo with content in the top-left would otherwise be hidden by it).
     art = _art_image(rgb, alpha)
     art_h = 360
+    strip = 62
     art_fit = art.copy()
     art_fit.thumbnail((inner, art_h), Image.LANCZOS)
-    panel_h = art_h + 24
+    panel_h = strip + art_fit.height + 20
     _rounded_panel(d, (MARGIN, y, MARGIN + inner, y + panel_h), 22, PANEL)
     ax = MARGIN + (inner - art_fit.width) // 2
-    ay = y + (panel_h - art_fit.height) // 2
+    ay = y + strip
     card.paste(art_fit, (ax, ay))
-    # BEFORE chip
+    # BEFORE chip (in the reserved band, above the art)
     chip = "YOUR ART"
     cw = d.textlength(chip, font=f_chip) + 28
-    d.rounded_rectangle((MARGIN + 16, y + 16, MARGIN + 16 + cw, y + 16 + 38), 10, fill=INDIGO)
-    d.text((MARGIN + 30, y + 23), chip, font=f_chip, fill=TEXT)
+    d.rounded_rectangle((MARGIN + 16, y + 14, MARGIN + 16 + cw, y + 14 + 38), 10, fill=INDIGO)
+    d.text((MARGIN + 30, y + 21), chip, font=f_chip, fill=TEXT)
     y += panel_h + 30
 
     # ---- arrow / caption ----------------------------------------------------

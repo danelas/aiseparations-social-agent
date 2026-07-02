@@ -122,12 +122,16 @@ def build(art_path, out_path, garment, aspect="portrait", mode="spot"):
 
     # artwork panel
     art = _art_image(rgb, alpha)
+    # Reserve a top band for the "YOUR ART" badge so it never sits on top of the
+    # artwork (a logo with content in the top-left would otherwise be covered).
+    STRIP = 84
     art_fit = art.copy()
-    art_fit.thumbnail((art_w - 40, art_box_h - 40), Image.LANCZOS)
+    art_fit.thumbnail((art_w - 40, art_box_h - STRIP - 30), Image.LANCZOS)
     art_panel = Image.new("RGBA", (art_w, art_box_h), (0, 0, 0, 0))
     ad = ImageDraw.Draw(art_panel)
     ad.rounded_rectangle((0, 0, art_w, art_box_h), 28, fill=PANEL + (255,))
-    art_panel.paste(art_fit, ((art_w - art_fit.width) // 2, (art_box_h - art_fit.height) // 2))
+    art_panel.paste(art_fit, ((art_w - art_fit.width) // 2,
+                              STRIP + (art_box_h - STRIP - art_fit.height) // 2))
     ad.rounded_rectangle((20, 20, 20 + ad.textlength("YOUR ART", font=f_chip) + 36, 70), 12, fill=INDIGO + (255,))
     ad.text((40, 30), "YOUR ART", font=f_chip, fill=TEXT + (255,))
 
